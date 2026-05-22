@@ -1,54 +1,126 @@
-# 🛒 E-commerce RAG Shopping Assistant
+# E-commerce RAG Shopping Assistant
 
-An intelligent shopping assistant pipeline built with **Retrieval-Augmented Generation (RAG)**. This project retrieves relevant product information from a custom catalog and uses a Large Language Model (LLM) to generate personalized, format-specific recommendations for users.
+An end-to-end Retrieval-Augmented Generation (RAG) project for product recommendation in an e-commerce setting.
+The current version uses a Streamlit web app and a hybrid retrieval strategy that combines vector search and keyword search before generating answers with Gemini.
 
-## 🌟 Key Features
+## Key Features
 
-* **Vector Search Engine:** Utilizes `FAISS` for fast and efficient similarity search.
-* **Multilingual Embeddings:** Powered by `sentence-transformers` (`paraphrase-multilingual-MiniLM-L12-v2`) to handle diverse queries accurately.
-* **Generative AI Integration:** Uses Google's `Gemini` API to synthesize retrieved context into natural, helpful, and strictly formatted recommendations.
-* **Secure Configuration:** Implements `python-dotenv` for safe API key management.
-* **Modular Architecture:** Clean separation of concerns between data indexing (offline) and querying (online).
+- Streamlit web interface for interactive shopping Q&A.
+- Hybrid Search retrieval as the default retrieval path.
+- FAISS vector search for semantic similarity matching.
+- BM25 keyword search for lexical relevance.
+- Reciprocal Rank Fusion (RRF) to merge vector and BM25 rankings.
+- Multilingual Embeddings: Powered by sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) to handle diverse queries accurately.
+- Gemini API integration for final natural-language recommendations.
+- Modular Architecture: Clean separation of concerns between data indexing (offline) and querying (online).
 
-## 📂 Project Structure
+
+## Architecture Overview
+
+The project is organized into two phases:
+
+1. Offline indexing (`build_index.py`)
+   - Load the catalog dataset from `data/rag_dataset.csv`.
+   - Build product documents used by both retrievers.
+   - Generate embeddings and build `data/product_index.faiss`.
+   - Build BM25 model from the same document list and save `data/bm25_model.pkl`.
+   - Save text documents to `data/documents.pkl`.
+
+2. Online retrieval + generation (`app.py` + `rag_pipeline.py`)
+   - Streamlit receives the user query.
+   - Query is encoded with SentenceTransformers.
+   - Hybrid retrieval runs:
+     - FAISS vector search
+     - BM25 keyword search
+     - RRF fusion
+   - Top contexts are inserted into a prompt.
+   - Gemini generates the final recommendation response.
+
+## Project Structure
 
 ```text
-📦 RAG-Shopping-Assistant
- ┣ 📂 data/
- ┃ ┣ 📜 rag_dataset.csv        # Raw product catalog dataset
- ┃ ┣ 📜 product_index.faiss    # Compiled FAISS vector index
- ┃ ┗ 📜 documents.pkl          # Pickled document store for retrieval
- ┣ 📜 build_index.py           # Script to encode text and build FAISS index
- ┣ 📜 query.py                 # Script to test vector retrieval directly
- ┣ 📜 rag_pipeline.py          # Main pipeline integrating FAISS and Gemini LLM
- ┣ 📜 .env                     # Environment variables (API Keys) - NOT tracked by git
- ┣ 📜 .gitignore               # Git ignore rules
- ┗ 📜 README.md                # Project documentation
+Naive_RAG/
+├── app.py                     # Streamlit web app (main entrypoint)
+├── build_index.py             # Offline indexing for FAISS + BM25 artifacts
+├── rag_pipeline.py            # Core retrieval + prompt + generation pipeline
+├── requirements.txt           # Python dependencies
+├── .env                       # Environment variables (Gemini API key)
+└── data/
+    ├── rag_dataset.csv        # Source product dataset
+    ├── product_index.faiss    # FAISS vector index artifact
+    ├── documents.pkl          # Serialized document list artifact
+    └── bm25_model.pkl         # Serialized BM25 model artifact
 ```
-## 💡 Usage
 
-Step 1: Build the Vector Index
-Run the indexing script to process the dataset, generate embeddings, and save the FAISS index.
-python build_index.py
+## Tech Stack
 
-Step 2: Test Retrieval (Optional)
-You can test the similarity search directly without invoking the LLM to verify the embedding quality.
-python query.py
+- Python
+- Streamlit
+- SentenceTransformers (`paraphrase-multilingual-MiniLM-L12-v2`)
+- FAISS (vector index)
+- rank-bm25 (keyword retrieval)
+- Google Gemini API (`gemini-2.5-flash`)
+- python-dotenv
 
-Step 3: Run the Full RAG Pipeline
-Interact with the shopping assistant. The system will retrieve the top 3 most relevant products and use Gemini to formulate the answer.
-python rag_pipeline.py
+## Usage
 
-📝 Example Output
-Enter your question: Recommend a blue cotton shirt for summer.
+1. Clone the project
 
-Generating answer...
+```bash
+git clone <your-repo-url>
+cd Naive_RAG
+```
 
-Answer:
-1. MekongBasics Blue Shirt - Cotton - $73.8
-   This blue cotton shirt is designed for everyday comfort, making it a great choice for summer.
+2. Create and activate a virtual environment
 
-## 👨‍💻 Author
-Nguyễn Duy Tân
-- Computer Science Major
-- Passionate about AI, LLMs, and Data Science.
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Create `.env` and add your Gemini API key
+
+```env
+GEMINI_API_KEY=your_api_key_here
+```
+
+5. Build or rebuild retrieval artifacts
+
+```bash
+python3 build_index.py
+```
+
+This command generates/updates:
+- `data/product_index.faiss`
+- `data/documents.pkl`
+- `data/bm25_model.pkl`
+
+6. Run the Streamlit app
+
+```bash
+streamlit run app.py
+```
+
+## Example Usage (Streamlit)
+
+After starting Streamlit, open the local URL shown in your terminal (commonly `http://localhost:8501`) and try prompts such as:
+
+- `Recommend a blue cotton shirt for summer`
+- `What are some affordable jeans?`
+- `Do you have waterproof hiking jackets?`
+
+The app will retrieve product context with Hybrid Search (FAISS + BM25 + RRF) and then generate a recommendation using Gemini.
+
+## Notes
+
+- If retrieval artifacts are missing or outdated, rerun:
+
+```bash
+python3 build_index.py
+```

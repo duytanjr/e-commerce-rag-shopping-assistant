@@ -1,13 +1,14 @@
 import streamlit as st
-import os
 
 # Import functions from existing pipeline
 from rag_pipeline import (
     INDEX_PATH,
     DOC_PATH,
+    BM25_PATH,
     load_embedding_model,
     load_index,
     load_documents,
+    load_bm25_index,
     encode_query,
     retrieve_context,
     build_prompt,
@@ -30,10 +31,11 @@ def load_resources():
         model = load_embedding_model()
         index = load_index(INDEX_PATH)
         documents = load_documents(DOC_PATH)
-    return model, index, documents
+        bm25_index = load_bm25_index(BM25_PATH)
+    return model, index, documents, bm25_index
 
 try:
-    embedding_model, faiss_index, docs = load_resources()
+    embedding_model, faiss_index, docs, bm25_index = load_resources()
 except Exception as e:
     st.error(f"Lỗi tải dữ liệu: {e}")
     st.stop()
@@ -56,8 +58,15 @@ if prompt := st.chat_input("VD: Recommend a blue cotton shirt for summer"):
             # 1. Encode query
             query_embedding = encode_query(embedding_model, prompt)
             
-            # 2. Retrieve context
-            contexts = retrieve_context(faiss_index, docs, query_embedding, k=3)
+            # 2. Retrieve context (hybrid default)
+            contexts = retrieve_context(
+                index=faiss_index,
+                documents=docs,
+                query_embedding=query_embedding,
+                query=prompt,
+                bm25_index=bm25_index,
+                k=3
+            )
             
             # 3. Build Prompt
             llm_prompt = build_prompt(prompt, contexts)

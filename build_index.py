@@ -2,12 +2,15 @@ import pandas as pd
 import numpy as np
 import faiss
 import pickle
+import re
 from sentence_transformers import SentenceTransformer
+from rank_bm25 import BM25Okapi
 
 
 DATA_PATH = "data/rag_dataset.csv"
 INDEX_PATH = "data/product_index.faiss"
 DOC_PATH = "data/documents.pkl"
+BM25_PATH = "data/bm25_model.pkl"
 
 
 # -----------------------------
@@ -73,14 +76,29 @@ def build_faiss_index(embeddings):
 
 
 # -----------------------------
-# 6. Save index + documents
+# 6. Build BM25 index
 # -----------------------------
-def save_artifacts(index, documents):
+def tokenize_for_bm25(text):
+    return re.findall(r"\w+", text.lower())
+
+
+def build_bm25_index(documents):
+    tokenized_corpus = [tokenize_for_bm25(doc) for doc in documents]
+    return BM25Okapi(tokenized_corpus)
+
+
+# -----------------------------
+# 7. Save index + documents + bm25
+# -----------------------------
+def save_artifacts(index, documents, bm25_index):
 
     faiss.write_index(index, INDEX_PATH)
 
     with open(DOC_PATH, "wb") as f:
         pickle.dump(documents, f)
+
+    with open(BM25_PATH, "wb") as f:
+        pickle.dump(bm25_index, f)
 
 
 # -----------------------------
@@ -103,8 +121,11 @@ def main():
     print("Building FAISS index...")
     index = build_faiss_index(embeddings)
 
+    print("Building BM25 index...")
+    bm25_index = build_bm25_index(documents)
+
     print("Saving artifacts...")
-    save_artifacts(index, documents)
+    save_artifacts(index, documents, bm25_index)
 
     print("Index built successfully!")
     print("Total documents:", len(documents))
