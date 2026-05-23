@@ -2,7 +2,7 @@ import faiss
 import pickle
 import os
 import re
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -13,12 +13,20 @@ BM25_PATH = "data/bm25_model.pkl"
 
 
 # -----------------------------
-# 1 Load embedding model
+# 1a Load embedding model
 # -----------------------------
 def load_embedding_model():
     model = SentenceTransformer(
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     )
+    return model
+
+
+# -----------------------------
+# 1b Load Reranker model
+# -----------------------------
+def load_reranker_model():
+    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return model
 
 
@@ -30,7 +38,7 @@ def load_index(path):
 
 
 # -----------------------------
-# 3 Load documents
+# 3a Load documents
 # -----------------------------
 def load_documents(path):
     with open(path, "rb") as f:
@@ -63,12 +71,14 @@ def retrieve_context(
     query_embedding,
     query,
     bm25_index,
+    reranker_model,
     k=3,
-    dense_top_n=10,
-    bm25_top_m=10,
-    rrf_k0=60
+    dense_top_n=30,
+    bm25_top_m=30,
+    rrf_k0=60,
+    rrf_top_k=15
 ):
-    return hybrid_retrieve_context(
+    candidate_contexts = hybrid_retrieve_context(
         index=index,
         documents=documents,
         bm25_index=bm25_index,
@@ -76,15 +86,39 @@ def retrieve_context(
         query=query,
         dense_top_n=dense_top_n,
         bm25_top_m=bm25_top_m,
-        k=k,
+        k=rrf_top_k,
         rrf_k0=rrf_k0
     )
+
+    final_contexts = rerank_documents(
+        reranker_model=reranker_model,
+        query=query,
+        candidate_documents=candidate_contexts,
+        top_k=k
+    )
+
+    return final_contexts
+
+
+# -----------------------------
+# 5a Rerank Documents
+# -----------------------------
+def rerank_documents(reranker_model, query, candidate_documents, top_k=3):
+    if not candidate_documents:
+        return []
+    
+    pairs = [[query, doc] for doc in candidate_documents]
+    scores = reranker_model.predict(pairs)
+    
+    scored_docs = sorted(zip(candidate_documents, scores), key=lambda x: x[1], reverse=True)
+    
+    return [doc for doc, score in scored_docs[:top_k]]
 
 
 # -----------------------------
 # 5b Vector search doc ids
 # -----------------------------
-def vector_search(index, query_embedding, top_n=10):
+def vector_search(index, query_embedding, top_n=30):
     _, indices = index.search(query_embedding, top_n)
     return [int(idx) for idx in indices[0] if idx != -1]
 
@@ -96,7 +130,7 @@ def tokenize_for_bm25(text):
     return re.findall(r"\w+", text.lower())
 
 
-def bm25_search(bm25_index, query, top_m=10):
+def bm25_search(bm25_index, query, top_m=30):
     query_tokens = tokenize_for_bm25(query)
     scores = bm25_index.get_scores(query_tokens)
     ranked_ids = sorted(
@@ -130,9 +164,9 @@ def hybrid_retrieve_context(
     bm25_index,
     query_embedding,
     query,
-    dense_top_n=10,
-    bm25_top_m=10,
-    k=3,
+    dense_top_n=30,
+    bm25_top_m=30,
+    k=15,
     rrf_k0=60
 ):
     dense_doc_ids = vector_search(index, query_embedding, top_n=dense_top_n)
@@ -218,6 +252,9 @@ def main():
     print("Loading BM25 index...")
     bm25_index = load_bm25_index(BM25_PATH)
 
+    print("Loading Reranker model...")
+    reranker_model = load_reranker_model()
+
     query = input("Enter your question: ")
 
     query_embedding = encode_query(embedding_model, query)
@@ -228,6 +265,7 @@ def main():
         query_embedding=query_embedding,
         query=query,
         bm25_index=bm25_index,
+        reranker_model=reranker_model,
         k=3
     )
 

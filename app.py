@@ -6,6 +6,7 @@ from rag_pipeline import (
     DOC_PATH,
     BM25_PATH,
     load_embedding_model,
+    load_reranker_model,
     load_index,
     load_documents,
     load_bm25_index,
@@ -29,13 +30,14 @@ if "messages" not in st.session_state:
 def load_resources():
     with st.spinner("Đang tải dữ liệu cửa hàng và AI... Vui lòng đợi nhé."):
         model = load_embedding_model()
+        reranker = load_reranker_model()
         index = load_index(INDEX_PATH)
         documents = load_documents(DOC_PATH)
         bm25_index = load_bm25_index(BM25_PATH)
-    return model, index, documents, bm25_index
+    return model, reranker, index, documents, bm25_index
 
 try:
-    embedding_model, faiss_index, docs, bm25_index = load_resources()
+    embedding_model, reranker_model, faiss_index, docs, bm25_index = load_resources()
 except Exception as e:
     st.error(f"Lỗi tải dữ liệu: {e}")
     st.stop()
@@ -65,6 +67,7 @@ if prompt := st.chat_input("VD: Recommend a blue cotton shirt for summer"):
                 query_embedding=query_embedding,
                 query=prompt,
                 bm25_index=bm25_index,
+                reranker_model=reranker_model,
                 k=3
             )
             
