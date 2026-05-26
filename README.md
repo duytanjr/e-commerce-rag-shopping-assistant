@@ -1,126 +1,200 @@
-# E-commerce RAG Shopping Assistant
+# E-commerce RAG Shopping Assistant with Hybrid Retrieval & RAGAS Evaluation
 
-An end-to-end Retrieval-Augmented Generation (RAG) project for product recommendation in an e-commerce setting.
-The current version uses a Streamlit web app and a hybrid retrieval strategy that combines vector search and keyword search before generating answers with Gemini.
+An end-to-end **Retrieval-Augmented Generation (RAG)** system for intelligent product search and recommendation in an e-commerce setting. The system combines **Hybrid Retrieval** (FAISS + BM25 + RRF) with a **Cross-Encoder Reranker** to maximize retrieval quality, and uses **Gemini** as the final answer generator. A full automated **RAGAS evaluation pipeline** is included to quantitatively measure system performance.
 
-## Key Features
+---
 
-- Streamlit web interface for interactive shopping Q&A.
-- Hybrid Search retrieval as the default retrieval path.
-- FAISS vector search for semantic similarity matching.
-- BM25 keyword search for lexical relevance.
-- Reciprocal Rank Fusion (RRF) to merge vector and BM25 rankings.
-- Multilingual Embeddings: Powered by sentence-transformers (paraphrase-multilingual-MiniLM-L12-v2) to handle diverse queries accurately.
-- Gemini API integration for final natural-language recommendations.
-- Modular Architecture: Clean separation of concerns between data indexing (offline) and querying (online).
+## ✨ Key Features
 
+- **Hybrid Retrieval** — Combines dense vector search (FAISS) and keyword search (BM25) via Reciprocal Rank Fusion (RRF) for superior recall over single-method approaches.
+- **Cross-Encoder Reranking** — A `ms-marco-MiniLM-L-6-v2` Cross-Encoder reranks the fused candidates to surface the most relevant products before generation.
+- **Multilingual Embeddings** — Uses `paraphrase-multilingual-MiniLM-L12-v2` to handle queries in multiple languages accurately.
+- **Gemini Integration** — Calls `gemini-2.5-flash` via the Google Generative AI API for high-quality, grounded recommendations.
+- **Automated Evaluation (RAGAS)** — Includes scripts to auto-generate a testset and evaluate the full pipeline on 4 standard RAG metrics using an LLM-as-Judge approach.
+- **Interactive Web UI** — A Streamlit chat interface with session history for real-time Q&A.
+- **Modular Architecture** — Clean separation between offline indexing and online querying.
 
-## Architecture Overview
+---
 
-The project is organized into two phases:
+## 🏗️ System Architecture
 
-1. Offline indexing (`build_index.py`)
-   - Load the catalog dataset from `data/rag_dataset.csv`.
-   - Build product documents used by both retrievers.
-   - Generate embeddings and build `data/product_index.faiss`.
-   - Build BM25 model from the same document list and save `data/bm25_model.pkl`.
-   - Save text documents to `data/documents.pkl`.
+```mermaid
+flowchart TD
+    subgraph OFFLINE ["⚙️ Offline Indexing (build_index.py)"]
+        A[rag_dataset.csv] --> B[Document Builder]
+        B --> C[SentenceTransformer Encoder]
+        B --> D[BM25 Tokenizer]
+        C --> E[(product_index.faiss)]
+        D --> F[(bm25_model.pkl)]
+        B --> G[(documents.pkl)]
+    end
 
-2. Online retrieval + generation (`app.py` + `rag_pipeline.py`)
-   - Streamlit receives the user query.
-   - Query is encoded with SentenceTransformers.
-   - Hybrid retrieval runs:
-     - FAISS vector search
-     - BM25 keyword search
-     - RRF fusion
-   - Top contexts are inserted into a prompt.
-   - Gemini generates the final recommendation response.
+    subgraph ONLINE ["🌐 Online Querying (app.py + rag_pipeline.py)"]
+        H[User Query] --> I[SentenceTransformer Encoder]
+        I --> J[FAISS Vector Search\nTop-30 candidates]
+        H --> K[BM25 Keyword Search\nTop-30 candidates]
+        J --> L[Reciprocal Rank Fusion\nRRF Top-15]
+        K --> L
+        L --> M[Cross-Encoder Reranker\nTop-3 final]
+        M --> N[Prompt Builder]
+        H --> N
+        N --> O[Gemini 2.5 Flash]
+        O --> P[Answer]
+    end
 
-## Project Structure
+    subgraph EVAL ["📊 Evaluation Pipeline"]
+        Q[generate_testset.py\nRAGAS TestsetGenerator] --> R[(ragas_testset.csv)]
+        R --> S[evaluate_rag.py\nRAGAS Metrics]
+        S --> T[(evaluation_results.csv)]
+    end
+
+    E --> J
+    F --> K
+    G --> M
+```
+
+---
+
+## 📊 Evaluation Results (RAGAS)
+
+The pipeline was evaluated on 15 auto-generated test questions using the [RAGAS](https://github.com/explodinggradients/ragas) framework with `gemini-2.5-flash` as the LLM Judge.
+
+| Metric | Score | Description |
+|---|---|---|
+| **Context Precision** | 0.8533 | Are the retrieved documents actually relevant to the question? |
+| **Context Recall** | 0.7867 | Do the retrieved documents cover all necessary information? |
+| **Faithfulness** | 0.9200 | Does the answer stay grounded in the retrieved context (no hallucination)? |
+| **Answer Relevancy** | 0.8733 | Does the answer directly address the user's question? |
+
+> Testset and evaluation scripts are located in `generate_testset.py` and `evaluate_rag.py`. The generated testset is saved at `data/ragas_testset.csv`.
+
+---
+
+## 📁 Project Structure
 
 ```text
 Naive_RAG/
 ├── app.py                     # Streamlit web app (main entrypoint)
-├── build_index.py             # Offline indexing for FAISS + BM25 artifacts
-├── rag_pipeline.py            # Core retrieval + prompt + generation pipeline
+├── build_index.py             # Offline indexing: builds FAISS, BM25, and document artifacts
+├── rag_pipeline.py            # Core pipeline: retrieval, reranking, prompt building, generation
+├── generate_testset.py        # Auto-generates evaluation testset using RAGAS TestsetGenerator
+├── evaluate_rag.py            # Runs RAGAS evaluation on the full pipeline
 ├── requirements.txt           # Python dependencies
-├── .env                       # Environment variables (Gemini API key)
+├── .env                       # Environment variables (not committed)
 └── data/
-    ├── rag_dataset.csv        # Source product dataset
+    ├── rag_dataset.csv        # Source product catalog dataset
     ├── product_index.faiss    # FAISS vector index artifact
     ├── documents.pkl          # Serialized document list artifact
-    └── bm25_model.pkl         # Serialized BM25 model artifact
+    ├── bm25_model.pkl         # Serialized BM25 model artifact
+    └── ragas_testset.csv      # Auto-generated evaluation testset (15 questions)
 ```
 
-## Tech Stack
+---
 
-- Python
-- Streamlit
-- SentenceTransformers (`paraphrase-multilingual-MiniLM-L12-v2`)
-- FAISS (vector index)
-- rank-bm25 (keyword retrieval)
-- Google Gemini API (`gemini-2.5-flash`)
-- python-dotenv
+## 🛠️ Tech Stack
 
-## Usage
+| Layer | Technology |
+|---|---|
+| **Web UI** | Streamlit |
+| **Embedding Model** | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| **Vector Store** | FAISS (`IndexFlatL2`) |
+| **Keyword Search** | rank-bm25 (`BM25Okapi`) |
+| **Fusion Strategy** | Reciprocal Rank Fusion (RRF) |
+| **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| **LLM** | Google Gemini 2.5 Flash |
+| **Evaluation** | RAGAS v0.2.x, LangChain Google GenAI |
+| **Environment** | python-dotenv |
 
-1. Clone the project
+---
+
+## 🚀 Getting Started
+
+### 1. Clone the repository
 
 ```bash
 git clone <your-repo-url>
 cd Naive_RAG
 ```
 
-2. Create and activate a virtual environment
+### 2. Create and activate a virtual environment
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Create `.env` and add your Gemini API key
+### 4. Configure environment variables
+
+Create a `.env` file in the project root:
 
 ```env
-GEMINI_API_KEY=your_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-5. Build or rebuild retrieval artifacts
+> Get your free API key at [Google AI Studio](https://aistudio.google.com/apikey).
+
+### 5. Build the retrieval index
 
 ```bash
 python3 build_index.py
 ```
 
-This command generates/updates:
-- `data/product_index.faiss`
-- `data/documents.pkl`
-- `data/bm25_model.pkl`
+This generates:
+- `data/product_index.faiss` — FAISS vector index
+- `data/documents.pkl` — serialized document list
+- `data/bm25_model.pkl` — BM25 keyword index
 
-6. Run the Streamlit app
+### 6. Launch the web app
 
 ```bash
 streamlit run app.py
 ```
 
-## Example Usage (Streamlit)
+Open the local URL shown in the terminal (typically `http://localhost:8501`).
 
-After starting Streamlit, open the local URL shown in your terminal (commonly `http://localhost:8501`) and try prompts such as:
+---
 
-- `Recommend a blue cotton shirt for summer`
-- `What are some affordable jeans?`
-- `Do you have waterproof hiking jackets?`
+## 🧪 Running the Evaluation Pipeline
 
-The app will retrieve product context with Hybrid Search (FAISS + BM25 + RRF) and then generate a recommendation using Gemini.
-
-## Notes
-
-- If retrieval artifacts are missing or outdated, rerun:
+### Step 1 — Generate the testset
 
 ```bash
-python3 build_index.py
+python3 generate_testset.py
 ```
+
+Uses RAGAS `TestsetGenerator` with Gemini to auto-generate 15 diverse test questions from the product catalog. Output: `data/ragas_testset.csv`.
+
+### Step 2 — Evaluate the pipeline
+
+```bash
+python3 evaluate_rag.py
+```
+
+Runs the full RAG pipeline on each test question, then scores the results using RAGAS metrics (Context Precision, Context Recall, Faithfulness, Answer Relevancy). Output: `data/evaluation_results.csv`.
+
+---
+
+## 💬 Example Queries
+
+Try these in the Streamlit chat interface:
+
+- `Recommend a blue cotton shirt for summer`
+- `What are some affordable jeans under $50?`
+- `Do you have any wool sweaters from SaigonStyle?`
+- `Find me a beige dress, lightweight and breathable`
+
+The system retrieves relevant products using Hybrid Search + Reranking and generates a grounded recommendation via Gemini.
+
+---
+
+## 📝 Notes
+
+- If retrieval artifacts are missing or you update the dataset, rerun `build_index.py`.
+- The evaluation pipeline requires a Gemini API key with sufficient quota (the RAGAS LLM Judge makes multiple API calls per question).
+- The `.env` file is excluded from version control via `.gitignore`.

@@ -1,0 +1,16 @@
+question,ground_truth
+Tôi muốn xem tất cả các loại áo sơ mi.,"Chúng tôi có các loại áo sơ mi sau: SaigonStyle Beige Shirt ($118.15), LotusFashion Brown Shirt ($29.31), SaigonStyle Red Shirt ($72.28), SaigonStyle Green Shirt ($50.61), UrbanLeaf Blue Shirt ($14.06), VietWear Green Shirt ($23.28)."
+Bạn có quần jeans không?,"Có, chúng tôi có các loại quần jeans sau: MekongBasics Red Jeans ($76.61), LotusFashion Green Jeans ($79.74), UrbanLeaf Green Jeans ($75.68), MekongBasics Beige Jeans ($106.58), NorthWind White Jeans ($16.53)."
+Tìm cho tôi áo len.,"Chúng tôi có các loại áo len sau: SaigonStyle Brown Sweater ($64.77), MekongBasics Black Sweater ($119.46), NorthWind Gray Sweater ($76.16), VietWear Green Sweater ($18.31), UrbanLeaf Beige Sweater ($77.39), VietWear Gray Sweater ($107.86), SaigonStyle Red Sweater ($40.18), MekongBasics Gray Sweater ($102.74), VietWear Beige Sweater ($23.82), MekongBasics Blue Sweater ($75.17)."
+Sản phẩm của thương hiệu MekongBasics?,"Các sản phẩm của MekongBasics bao gồm: MekongBasics Red Jeans ($76.61), MekongBasics Black Sweater ($119.46), MekongBasics Green Shorts ($117.97), MekongBasics Gray Dress ($41.28), MekongBasics Brown T-shirt (Wool) ($119.41), MekongBasics Blue Jacket ($13.11), MekongBasics Brown T-shirt (Cotton) ($15.30), MekongBasics Blue Shorts ($99.57), MekongBasics Brown Hoodie ($42.64), MekongBasics Blue Sweater ($75.17), MekongBasics Beige Jeans ($106.58), MekongBasics Beige Skirt ($114.60), MekongBasics Gray Sweater ($102.74), MekongBasics Black Shorts ($35.48)."
+Những chiếc quần short có sẵn.,"Chúng tôi có các loại quần short sau: MekongBasics Green Shorts ($117.97), VietWear Beige Shorts ($100.95), UrbanLeaf Brown Shorts ($35.99), NorthWind Blue Shorts (Cotton) ($21.26), MekongBasics Blue Shorts (Cotton) ($99.57), NorthWind Blue Shorts (Denim) ($58.05), LotusFashion Green Shorts ($103.84), LotusFashion Red Shorts ($82.94), MekongBasics Black Shorts ($35.48), UrbanLeaf Beige Shorts ($89.30)."
+Tìm áo khoác màu xanh lam.,"Chúng tôi có các áo khoác màu xanh lam sau: MekongBasics Blue Jacket ($13.11), UrbanLeaf Blue Jacket ($100.73), NorthWind Blue Jacket ($45.48)."
+Áo len chất liệu cotton giá dưới 70$.,SaigonStyle Brown Sweater ($64.77).
+Quần short màu be.,"Các quần short màu be có sẵn: VietWear Beige Shorts ($100.95), UrbanLeaf Beige Shorts ($89.30)."
+Sản phẩm của UrbanLeaf làm từ len.,"Các sản phẩm của UrbanLeaf làm từ len: UrbanLeaf Blue Hoodie ($82.16), UrbanLeaf Black Jacket ($53.44), UrbanLeaf Beige Shorts ($89.30)."
+Đầm màu đen giá bất kỳ.,LotusFashion Black Dress ($84.57).
+Sản phẩm rẻ nhất trong danh mục là gì?,Sản phẩm rẻ nhất là MekongBasics Blue Jacket với giá $13.11.
+Những sản phẩm nào của VietWear có chất liệu denim?,"Các sản phẩm của VietWear làm từ denim: VietWear Green Sweater ($18.31), VietWear Brown Jacket ($51.67), VietWear Beige Sweater ($23.82)."
+Tôi đang tìm một chiếc áo sơ mi nhẹ và thoáng khí. Có lựa chọn nào không?,"Có, chúng tôi có SaigonStyle Beige Shirt ($118.15) với mô tả ""offering breathable and lightweight wear."""
+Sản phẩm đắt nhất của SaigonStyle?,Sản phẩm đắt nhất của SaigonStyle là SaigonStyle Beige Shirt với giá $118.15.
+"Có quần váy (skirt) màu xám không, và giá của nó là bao nhiêu?","Có, UrbanLeaf Gray Skirt có giá $114.01."

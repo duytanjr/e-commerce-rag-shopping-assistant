@@ -93,3 +93,7 @@ uritemplate==4.2.0
 urllib3==2.6.3
 uvicorn==0.46.0
 websockets==16.0
+ragas==0.2.14
+langchain-google-genai==2.0.10
+datasets==3.3.2
+rapidfuzz==3.10.1
