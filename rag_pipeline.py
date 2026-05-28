@@ -1,203 +1,126 @@
-import faiss
-import pickle
 import os
-import re
-from sentence_transformers import SentenceTransformer, CrossEncoder
-import google.generativeai as genai
+import pickle
 from dotenv import load_dotenv
 
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.cross_encoders import HuggingFaceCrossEncoder
+from langchain.retrievers import EnsembleRetriever, ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import CrossEncoderReranker
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.retrieval import create_retrieval_chain
 
-INDEX_PATH = "data/product_index.faiss"
-DOC_PATH = "data/documents.pkl"
-BM25_PATH = "data/bm25_model.pkl"
+
+FAISS_STORE_PATH = "data/faiss_store"
+BM25_PATH = "data/bm25_retriever.pkl"
 
 
-# -----------------------------
-# 1a Load embedding model
-# -----------------------------
+# =============================================================
+# 1. Load Embedding Model (LangChain wrapper)
+# =============================================================
+# Trước đây: SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+# Bây giờ: HuggingFaceEmbeddings(model_name=...) — cùng model bên trong
 def load_embedding_model():
-    model = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
-    return model
-
-
-# -----------------------------
-# 1b Load Reranker model
-# -----------------------------
-def load_reranker_model():
-    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    return model
-
-
-# -----------------------------
-# 2 Load FAISS index
-# -----------------------------
-def load_index(path):
-    return faiss.read_index(path)
-
-
-# -----------------------------
-# 3a Load documents
-# -----------------------------
-def load_documents(path):
-    with open(path, "rb") as f:
-        documents = pickle.load(f)
-    return documents
-
-
-# -----------------------------
-# 3b Load BM25 index
-# -----------------------------
-def load_bm25_index(path):
-    with open(path, "rb") as f:
-        bm25_index = pickle.load(f)
-    return bm25_index
-
-
-# -----------------------------
-# 4 Encode query
-# -----------------------------
-def encode_query(model, query):
-    return model.encode([query])
-
-
-# -----------------------------
-# 5 Retrieve context (hybrid primary retrieval)
-# -----------------------------
-def retrieve_context(
-    index,
-    documents,
-    query_embedding,
-    query,
-    bm25_index,
-    reranker_model,
-    k=3,
-    dense_top_n=30,
-    bm25_top_m=30,
-    rrf_k0=60,
-    rrf_top_k=15
-):
-    candidate_contexts = hybrid_retrieve_context(
-        index=index,
-        documents=documents,
-        bm25_index=bm25_index,
-        query_embedding=query_embedding,
-        query=query,
-        dense_top_n=dense_top_n,
-        bm25_top_m=bm25_top_m,
-        k=rrf_top_k,
-        rrf_k0=rrf_k0
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     )
 
-    final_contexts = rerank_documents(
-        reranker_model=reranker_model,
-        query=query,
-        candidate_documents=candidate_contexts,
-        top_k=k
+
+# =============================================================
+# 2. Load FAISS Vector Store
+# =============================================================
+# Trước đây: faiss.read_index("product_index.faiss") + pickle.load("documents.pkl")
+#            → Phải tự map ID → document text thủ công
+# Bây giờ: FAISS.load_local() tự động load cả vector lẫn text
+def load_faiss_store(embeddings):
+    return FAISS.load_local(
+        FAISS_STORE_PATH,
+        embeddings,
+        allow_dangerous_deserialization=True
     )
 
-    return final_contexts
+
+# =============================================================
+# 3. Load BM25 Retriever
+# =============================================================
+# Trước đây: pickle.load() → BM25Okapi object (phải tự tokenize query, tự tính score)
+# Bây giờ: pickle.load() → BM25Retriever object (gọi .invoke(query) là xong)
+def load_bm25_retriever():
+    with open(BM25_PATH, "rb") as f:
+        return pickle.load(f)
 
 
-# -----------------------------
-# 5a Rerank Documents
-# -----------------------------
-def rerank_documents(reranker_model, query, candidate_documents, top_k=3):
-    if not candidate_documents:
-        return []
-    
-    pairs = [[query, doc] for doc in candidate_documents]
-    scores = reranker_model.predict(pairs)
-    
-    scored_docs = sorted(zip(candidate_documents, scores), key=lambda x: x[1], reverse=True)
-    
-    return [doc for doc, score in scored_docs[:top_k]]
+# =============================================================
+# 4. Build Hybrid Retriever (FAISS + BM25 + RRF + Reranker)
+# =============================================================
+# Trước đây: 5 hàm thủ công (vector_search, bm25_search,
+#            reciprocal_rank_fusion, hybrid_retrieve_context, rerank_documents)
+#            tổng cộng ~120 dòng code
+# Bây giờ: 3 class LangChain xếp chồng lên nhau, ~15 dòng code
+def build_retriever(faiss_store, bm25_retriever):
+    # 4a. Tạo FAISS retriever từ vector store
+    faiss_retriever = faiss_store.as_retriever(search_kwargs={"k": 30})
 
+    # 4b. Cấu hình BM25 retriever
+    bm25_retriever.k = 30
 
-# -----------------------------
-# 5b Vector search doc ids
-# -----------------------------
-def vector_search(index, query_embedding, top_n=30):
-    _, indices = index.search(query_embedding, top_n)
-    return [int(idx) for idx in indices[0] if idx != -1]
-
-
-# -----------------------------
-# 5c BM25 search doc ids
-# -----------------------------
-def tokenize_for_bm25(text):
-    return re.findall(r"\w+", text.lower())
-
-
-def bm25_search(bm25_index, query, top_m=30):
-    query_tokens = tokenize_for_bm25(query)
-    scores = bm25_index.get_scores(query_tokens)
-    ranked_ids = sorted(
-        range(len(scores)),
-        key=lambda i: scores[i],
-        reverse=True
-    )
-    return ranked_ids[:top_m]
-
-
-# -----------------------------
-# 5d Reciprocal Rank Fusion
-# -----------------------------
-def reciprocal_rank_fusion(ranked_lists, k0=60, top_k=3):
-    fused_scores = {}
-
-    for ranked_list in ranked_lists:
-        for rank, doc_id in enumerate(ranked_list, start=1):
-            fused_scores[doc_id] = fused_scores.get(doc_id, 0.0) + (1.0 / (k0 + rank))
-
-    reranked_ids = sorted(fused_scores, key=fused_scores.get, reverse=True)
-    return reranked_ids[:top_k]
-
-
-# -----------------------------
-# 5e Hybrid retrieve context
-# -----------------------------
-def hybrid_retrieve_context(
-    index,
-    documents,
-    bm25_index,
-    query_embedding,
-    query,
-    dense_top_n=30,
-    bm25_top_m=30,
-    k=15,
-    rrf_k0=60
-):
-    dense_doc_ids = vector_search(index, query_embedding, top_n=dense_top_n)
-    bm25_doc_ids = bm25_search(bm25_index, query, top_m=bm25_top_m)
-
-    fused_ids = reciprocal_rank_fusion(
-        [dense_doc_ids, bm25_doc_ids],
-        k0=rrf_k0,
-        top_k=k
+    # 4c. Hybrid Search: EnsembleRetriever tự động chạy RRF bên trong
+    # Trước đây ta phải tự viết công thức: score += 1/(k0 + rank)
+    # Bây giờ LangChain đã code sẵn thuật toán RRF trong class này
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[faiss_retriever, bm25_retriever],
+        weights=[0.5, 0.5]  # Trọng số ngang nhau cho FAISS và BM25
     )
 
-    return [documents[idx] for idx in fused_ids]
+    # 4d. Cross-Encoder Reranker: Chấm điểm lại Top-15 → chọn Top-3
+    # Trước đây ta phải tự loop qua Cross-Encoder, tự sort, tự slice
+    # Bây giờ LangChain gói gọn trong ContextualCompressionRetriever
+    reranker_model = HuggingFaceCrossEncoder(
+        model_name="cross-encoder/ms-marco-MiniLM-L-6-v2"
+    )
+    compressor = CrossEncoderReranker(model=reranker_model, top_n=3)
+
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=ensemble_retriever
+    )
+
+    return compression_retriever
 
 
-# -----------------------------
-# 6 Build prompt
-# -----------------------------
-def build_prompt(query, contexts):
+# =============================================================
+# 5. Build RAG Chain (Retriever + Prompt + LLM)
+# =============================================================
+# Trước đây: 3 hàm riêng lẻ (build_prompt, generate_answer, retrieve_context)
+#            phải gọi tuần tự thủ công
+# Bây giờ: 1 chain duy nhất — ném câu hỏi vào → tự retrieve → tự prompt → tự generate
+def build_rag_chain(retriever):
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY", "").strip('"').strip("'")
+    os.environ["GOOGLE_API_KEY"] = api_key
 
-    context_text = "\n\n".join(contexts)
+    # 5a. Cấu hình LLM (giữ nguyên Gemini 2.5 Flash)
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        temperature=0.7,
+        google_api_key=api_key
+    )
 
-    prompt = f"""
+    # 5b. Prompt Template (giữ nguyên nội dung prompt cũ)
+    # Trước đây: Nối chuỗi f-string thủ công
+    # Bây giờ: ChatPromptTemplate — chuẩn LangChain, dễ tái sử dụng
+    prompt = ChatPromptTemplate.from_template("""
 You are a helpful shopping assistant.
 
 Use ONLY the information from the product catalog below.
 
 Context:
-{context_text}
+{context}
 
 User question:
-{query}
+{input}
 
 Instructions:
 - Recommend suitable products.
@@ -213,70 +136,64 @@ Example format:
 
 2. Product Name - Material - Price
    Short explanation.
-"""
+""")
 
-    return prompt
+    # 5c. Tạo chain hoàn chỉnh
+    # create_stuff_documents_chain: Ghép tất cả documents vào {context} trong prompt
+    # create_retrieval_chain: Kết nối retriever với document chain
+    qa_chain = create_stuff_documents_chain(llm, prompt)
+    rag_chain = create_retrieval_chain(retriever, qa_chain)
 
-
-# -----------------------------
-# 7 Generate answer with Gemini
-# -----------------------------
-def generate_answer(prompt):
-    load_dotenv()
-
-    api_key = os.getenv("GEMINI_API_KEY")
-
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel("gemini-2.5-flash")
-
-    response = model.generate_content(prompt)
-
-    return response.text
+    return rag_chain
 
 
-# -----------------------------
-# Main pipeline
-# -----------------------------
+# =============================================================
+# 6. Helper functions (cho app.py và evaluate_rag.py)
+# =============================================================
+def load_rag_chain():
+    """Load toàn bộ hệ thống RAG và trả về chain hoàn chỉnh."""
+    embeddings = load_embedding_model()
+    faiss_store = load_faiss_store(embeddings)
+    bm25_retriever = load_bm25_retriever()
+    retriever = build_retriever(faiss_store, bm25_retriever)
+    chain = build_rag_chain(retriever)
+    return chain
+
+
+def load_retriever():
+    """Load chỉ phần retriever (để evaluate_rag.py lấy contexts riêng)."""
+    embeddings = load_embedding_model()
+    faiss_store = load_faiss_store(embeddings)
+    bm25_retriever = load_bm25_retriever()
+    return build_retriever(faiss_store, bm25_retriever)
+
+
+def ask(chain, query):
+    """
+    Hỏi chatbot 1 câu và nhận kết quả.
+
+    Trả về dict:
+      - "answer": Câu trả lời từ Gemini
+      - "context": Danh sách Document objects đã retrieve
+    """
+    result = chain.invoke({"input": query})
+    return result
+
+
+# =============================================================
+# Main pipeline (chạy thử trực tiếp)
+# =============================================================
 def main():
+    print("Loading RAG chain...")
+    chain = load_rag_chain()
 
-    print("Loading embedding model...")
-    embedding_model = load_embedding_model()
+    query = input("\nEnter your question: ")
 
-    print("Loading FAISS index...")
-    index = load_index(INDEX_PATH)
-
-    print("Loading documents...")
-    documents = load_documents(DOC_PATH)
-
-    print("Loading BM25 index...")
-    bm25_index = load_bm25_index(BM25_PATH)
-
-    print("Loading Reranker model...")
-    reranker_model = load_reranker_model()
-
-    query = input("Enter your question: ")
-
-    query_embedding = encode_query(embedding_model, query)
-
-    contexts = retrieve_context(
-        index=index,
-        documents=documents,
-        query_embedding=query_embedding,
-        query=query,
-        bm25_index=bm25_index,
-        reranker_model=reranker_model,
-        k=3
-    )
-
-    prompt = build_prompt(query, contexts)
-
-    print("\nGenerating answer...\n")
-
-    answer = generate_answer(prompt)
+    print("\nProcessing...\n")
+    result = ask(chain, query)
 
     print("Answer:")
-    print(answer)
+    print(result["answer"])
 
 
 if __name__ == "__main__":

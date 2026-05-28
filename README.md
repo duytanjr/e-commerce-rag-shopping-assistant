@@ -1,6 +1,6 @@
 # E-commerce RAG Shopping Assistant with Hybrid Retrieval & RAGAS Evaluation
 
-An end-to-end **Retrieval-Augmented Generation (RAG)** system for intelligent product search and recommendation in an e-commerce setting. The system combines **Hybrid Retrieval** (FAISS + BM25 + RRF) with a **Cross-Encoder Reranker** to maximize retrieval quality, and uses **Gemini** as the final answer generator. A full automated **RAGAS evaluation pipeline** is included to quantitatively measure system performance.
+An end-to-end **Retrieval-Augmented Generation (RAG)** system built with **LangChain** for intelligent product search and recommendation in an e-commerce setting. The system combines **Hybrid Retrieval** (FAISS + BM25 + RRF) with a **Cross-Encoder Reranker** to maximize retrieval quality, and uses **Gemini** as the final answer generator. A full automated **RAGAS evaluation pipeline** is included to quantitatively measure system performance.
 
 ---
 
@@ -12,6 +12,7 @@ An end-to-end **Retrieval-Augmented Generation (RAG)** system for intelligent pr
 - **Gemini Integration** — Calls `gemini-2.5-flash` via the Google Generative AI API for high-quality, grounded recommendations.
 - **Automated Evaluation (RAGAS)** — Includes scripts to auto-generate a testset and evaluate the full pipeline on 4 standard RAG metrics using an LLM-as-Judge approach.
 - **Interactive Web UI** — A Streamlit chat interface with session history for real-time Q&A.
+- **LangChain Framework** — Built entirely on LangChain for standardized, production-ready chain orchestration.
 - **Modular Architecture** — Clean separation between offline indexing and online querying.
 
 ---
@@ -75,17 +76,16 @@ The pipeline was evaluated on 15 auto-generated test questions using the [RAGAS]
 ```text
 Naive_RAG/
 ├── app.py                     # Streamlit web app (main entrypoint)
-├── build_index.py             # Offline indexing: builds FAISS, BM25, and document artifacts
-├── rag_pipeline.py            # Core pipeline: retrieval, reranking, prompt building, generation
+├── build_index.py             # Offline indexing: builds FAISS and BM25 artifacts via LangChain
+├── rag_pipeline.py            # Core LangChain pipeline: retriever chain, prompt, generation
 ├── generate_testset.py        # Auto-generates evaluation testset using RAGAS TestsetGenerator
 ├── evaluate_rag.py            # Runs RAGAS evaluation on the full pipeline
 ├── requirements.txt           # Python dependencies
 ├── .env                       # Environment variables (not committed)
 └── data/
     ├── rag_dataset.csv        # Source product catalog dataset
-    ├── product_index.faiss    # FAISS vector index artifact
-    ├── documents.pkl          # Serialized document list artifact
-    ├── bm25_model.pkl         # Serialized BM25 model artifact
+    ├── faiss_store/           # LangChain FAISS vector store (index + docstore)
+    ├── bm25_retriever.pkl     # Serialized LangChain BM25Retriever
     └── ragas_testset.csv      # Auto-generated evaluation testset (15 questions)
 ```
 
@@ -95,14 +95,15 @@ Naive_RAG/
 
 | Layer | Technology |
 |---|---|
+| **Framework** | LangChain (Chains, Retrievers, Prompt Templates) |
 | **Web UI** | Streamlit |
-| **Embedding Model** | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| **Vector Store** | FAISS (`IndexFlatL2`) |
-| **Keyword Search** | rank-bm25 (`BM25Okapi`) |
-| **Fusion Strategy** | Reciprocal Rank Fusion (RRF) |
-| **Reranker** | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
-| **LLM** | Google Gemini 2.5 Flash |
-| **Evaluation** | RAGAS v0.2.x, LangChain Google GenAI |
+| **Embedding Model** | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` via `langchain-huggingface` |
+| **Vector Store** | FAISS via `langchain-community` |
+| **Keyword Search** | BM25Retriever via `langchain-community` |
+| **Fusion Strategy** | EnsembleRetriever (Reciprocal Rank Fusion) |
+| **Reranker** | CrossEncoderReranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`) |
+| **LLM** | Google Gemini 2.5 Flash via `langchain-google-genai` |
+| **Evaluation** | RAGAS v0.2.x |
 | **Environment** | python-dotenv |
 
 ---

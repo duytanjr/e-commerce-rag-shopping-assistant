@@ -1,7 +1,6 @@
 import pandas as pd
 from datasets import Dataset
 import os
-import time
 from dotenv import load_dotenv
 
 # Cố gắng import RAGAS
@@ -18,21 +17,10 @@ except ImportError as e:
     print(f"Lỗi Import RAGAS/LangChain: {e}. Vui lòng cài đặt đầy đủ theo requirements.txt")
     exit(1)
 
-# Import hệ thống RAG hiện tại của dự án
-from rag_pipeline import (
-    INDEX_PATH,
-    DOC_PATH,
-    BM25_PATH,
-    load_embedding_model,
-    load_index,
-    load_documents,
-    load_bm25_index,
-    load_reranker_model,
-    encode_query,
-    retrieve_context,
-    build_prompt,
-    generate_answer
-)
+# Import hệ thống RAG (LangChain version)
+# Trước đây: Import 12 hàm riêng lẻ
+# Bây giờ: Chỉ cần 2 hàm chính
+from rag_pipeline import load_rag_chain, ask
 
 def main():
     load_dotenv()
@@ -43,17 +31,21 @@ def main():
     # Bổ sung dòng này để LangChain nhận diện được API key
     os.environ["GOOGLE_API_KEY"] = api_key
 
-    print("1. Đang nạp hệ thống RAG (Model, FAISS, BM25, Reranker)...")
+    # ==========================================================
+    # Bước 1: Nạp hệ thống RAG
+    # ==========================================================
+    # Trước đây: Load 5 thành phần riêng lẻ (embedding_model, faiss_index, docs, bm25, reranker)
+    # Bây giờ: 1 dòng duy nhất — load_rag_chain() trả về chain hoàn chỉnh
+    print("1. Đang nạp hệ thống RAG (LangChain Chain)...")
     try:
-        embedding_model = load_embedding_model()
-        faiss_index = load_index(INDEX_PATH)
-        docs = load_documents(DOC_PATH)
-        bm25_index = load_bm25_index(BM25_PATH)
-        reranker_model = load_reranker_model()
+        chain = load_rag_chain()
     except Exception as e:
         print(f"Lỗi nạp hệ thống: {e}")
         return
 
+    # ==========================================================
+    # Bước 2: Đọc tập dữ liệu kiểm thử
+    # ==========================================================
     print("2. Đang đọc tập dữ liệu kiểm thử (Testset)...")
     try:
         testset_df = pd.read_csv("data/ragas_testset.csv")
@@ -72,34 +64,35 @@ def main():
     answers = []
     contexts_list = []
 
+    # ==========================================================
+    # Bước 3: Thu thập câu trả lời từ RAG
+    # ==========================================================
+    # Trước đây: 4 bước thủ công cho mỗi câu hỏi
+    #   query_emb = encode_query(embedding_model, question)
+    #   contexts = retrieve_context(index, docs, query_emb, question, bm25, reranker, k=3)
+    #   prompt = build_prompt(question, contexts)
+    #   answer = generate_answer(prompt)
+    #
+    # Bây giờ: 1 lệnh duy nhất — ask(chain, question)
     print("3. Đang thu thập câu trả lời từ RAG cho từng câu hỏi (Data Collection)...")
-    # Quét qua từng câu hỏi để lấy kết quả từ pipeline RAG
     for idx, question in enumerate(questions):
         print(f"  Đang xử lý câu {idx+1}/{len(questions)}...")
         
-        # Bước thu hồi
-        query_emb = encode_query(embedding_model, question)
-        contexts = retrieve_context(
-            index=faiss_index,
-            documents=docs,
-            query_embedding=query_emb,
-            query=question,
-            bm25_index=bm25_index,
-            reranker_model=reranker_model,
-            k=3
-        )
+        result = ask(chain, question)
         
-        # Bước sinh
-        prompt = build_prompt(question, contexts)
-        answer = generate_answer(prompt)
+        # Lấy answer
+        answer = result["answer"]
         
-        # Lưu kết quả
+        # Lấy contexts (LangChain trả về list of Document objects)
+        # RAGAS cần list of strings, nên phải convert
+        contexts = [doc.page_content for doc in result["context"]]
+        
         answers.append(answer)
         contexts_list.append(contexts)
-        
-        # Ngủ 15 giây giữa các câu hỏi để lách giới hạn 5 request/phút của API miễn phí
-        time.sleep(15)
 
+    # ==========================================================
+    # Bước 4: Chuẩn bị dữ liệu cho RAGAS
+    # ==========================================================
     print("4. Chuẩn bị định dạng dữ liệu cho RAGAS...")
     data = {
         "question": questions,
@@ -109,6 +102,9 @@ def main():
     }
     dataset = Dataset.from_dict(data)
 
+    # ==========================================================
+    # Bước 5: Chấm điểm bằng RAGAS
+    # ==========================================================
     print("5. Bắt đầu chấm điểm (Evaluation) bằng Giám khảo Gemini...")
     # Cấu hình Giám khảo
     evaluator_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
