@@ -1,5 +1,7 @@
 # E-commerce RAG Shopping Assistant with Hybrid Retrieval & RAGAS Evaluation
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-HuggingFace_Spaces-blue?logo=huggingface)](https://huggingface.co/spaces/duytanjr/ecommerce-shopping-assistant)
+
 An end-to-end **Retrieval-Augmented Generation (RAG)** system built with **LangChain** for intelligent product search and recommendation in an e-commerce setting. The system combines **Hybrid Retrieval** (FAISS + BM25 + RRF) with a **Cross-Encoder Reranker** to maximize retrieval quality, and uses **Gemini** as the final answer generator. A full automated **RAGAS evaluation pipeline** is included to quantitatively measure system performance.
 
 ---
