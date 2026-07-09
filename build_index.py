@@ -35,16 +35,24 @@ def create_langchain_documents(df):
             f"Category: {row['category']}. "
             f"Material: {row['material']}. "
             f"Color: {row['color']}. "
+            f"Gender: {row['gender']}. "
+            f"Season: {row['season']}. "
+            f"Size: {row['size_available']}. "
             f"Price: ${row['price_usd']}. "
-            f"Description: {row['description']}"
+            f"Description: {row['description']}. "
+            f"Care: {row['care_instructions']}"
         )
         # Document object = page_content (nội dung) + metadata (thông tin phụ)
         doc = Document(
             page_content=text,
             metadata={
+                "product_id": row["product_id"],
                 "product_name": row["product_name"],
                 "brand": row["brand"],
                 "category": row["category"],
+                "gender": row["gender"],
+                "season": row["season"],
+                "size_available": row["size_available"],
                 "price": row["price_usd"]
             }
         )

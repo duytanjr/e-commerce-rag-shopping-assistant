@@ -22,23 +22,27 @@ def main():
     # Bổ sung dòng này để LangChain nhận diện được API key của bạn
     os.environ["GOOGLE_API_KEY"] = api_key
 
-    print("1. Đang nạp dữ liệu sản phẩm từ data/documents.pkl...")
+    print("1. Đang nạp dữ liệu sản phẩm từ data/rag_dataset.csv...")
     try:
-        with open("data/documents.pkl", "rb") as f:
-            raw_documents = pickle.load(f)
-    except FileNotFoundError:
-        print("Lỗi: Không tìm thấy file data/documents.pkl. Vui lòng chạy build_index.py trước.")
+        from build_index import load_dataset, create_langchain_documents
+        df = load_dataset("data/rag_dataset.csv")
+        raw_documents = create_langchain_documents(df)
+    except Exception as e:
+        print(f"Lỗi khi đọc dữ liệu: {e}")
         return
 
     # Gộp tất cả sản phẩm thành một chuỗi lớn để RAGAS xử lý (Tránh lỗi tài liệu quá ngắn)
     # RAGAS 0.2.x yêu cầu document phải dài hơn 100 token để có thể phân tích Knowledge Graph
-    combined_text = "\n\n---\n\n".join(raw_documents)
+    combined_text = "\n\n---\n\n".join([doc.page_content for doc in raw_documents])
     documents = [Document(page_content=combined_text)]
 
     print("2. Đang khởi tạo Giám khảo sinh đề (Gemini)...")
+    
     # Khởi tạo mô hình ngôn ngữ và mô hình nhúng của Google
-    # Dùng gemini-2.5-flash để tiết kiệm tốc độ và chi phí
+    # Dùng gemini-2.5-flash vì Google cho phép tới 1,000,000 Token/phút
+    from langchain_google_genai import ChatGoogleGenerativeAI
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
+    
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
     # Khởi tạo TestsetGenerator (RAGAS v0.2.x)
